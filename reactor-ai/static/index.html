@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 化工反应器智能建模</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --card: #ffffff; --ink: #1a2333; --sub: #5b6778;
+    --sub2: #6b7787; --line: #e3e8ef; --accent: #0e6e5c; --accent2: #0a5a8a;
+    --warn: #b45309; --err: #b91c1c; --ok: #15803d;
+    --mono: "Cascadia Code", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink);
+         font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; font-size: 14px; }
+  header { background: linear-gradient(135deg, #0b3d33, #0e6e5c 60%, #12707c);
+           color: #fff; padding: 22px 32px; }
+  header h1 { font-size: 20px; font-weight: 600; letter-spacing: .5px; }
+  header p { opacity: .85; margin-top: 4px; font-size: 13px; }
+  .status-chips { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { font-size: 12px; padding: 3px 10px; border-radius: 999px;
+          background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.28); }
+  .chip b { font-weight: 600; }
+  main { display: grid; grid-template-columns: 420px 1fr; gap: 16px;
+         max-width: 1400px; margin: 16px auto; padding: 0 24px; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 18px; box-shadow: 0 1px 3px rgba(16,24,40,.05); }
+  .card h2 { font-size: 15px; margin-bottom: 12px; color: var(--ink); }
+  textarea { width: 100%; min-height: 200px; padding: 12px; border: 1px solid var(--line);
+             border-radius: 8px; font-family: inherit; font-size: 13px; line-height: 1.6;
+             resize: vertical; }
+  textarea:focus { outline: 2px solid #bfe3dc; border-color: var(--accent); }
+  .presets { margin: 12px 0; display: flex; flex-direction: column; gap: 8px; }
+  .preset { text-align: left; background: #f0f7f6; border: 1px solid #d3e8e4; color: #0b3d33;
+            padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 12.5px;
+            line-height: 1.5; transition: .15s; }
+  .preset:hover { background: #e2f1ee; border-color: var(--accent); }
+  .btns { display: flex; gap: 10px; margin-top: 14px; }
+  button.primary { flex: 1; background: var(--accent); color: #fff; border: 0;
+                   padding: 11px; border-radius: 8px; font-size: 14px; font-weight: 600;
+                   cursor: pointer; }
+  button.primary:hover { background: #0a584a; }
+  button.primary:disabled { background: #9db8b3; cursor: wait; }
+  button.ghost { background: #fff; color: var(--accent); border: 1px solid var(--accent);
+                 padding: 11px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .env-note { margin-top: 12px; font-size: 12px; color: var(--sub2); line-height: 1.6; }
+  .save-opt { display: flex; align-items: center; gap: 8px; margin-top: 12px;
+              font-size: 13px; color: #374151; cursor: pointer; user-select: none; }
+  .save-opt input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+  .case-file { margin-top: 8px; font-size: 12.5px; color: var(--sub); word-break: break-all; }
+  .case-file code { font-family: var(--mono); color: var(--accent2); }
+  /* 右侧结果 */
+  #results { display: flex; flex-direction: column; gap: 16px; }
+  .task-card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+               overflow: hidden; box-shadow: 0 1px 3px rgba(16,24,40,.05); }
+  .task-head { padding: 14px 18px; display: flex; align-items: center; gap: 12px;
+               border-bottom: 1px solid var(--line); background: #fafcfd; }
+  .badge { padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
+           color: #fff; white-space: nowrap; }
+  .badge.equilibrium { background: var(--accent2); }
+  .badge.conversion { background: var(--accent); }
+  .badge.gibbs { background: #7c3aed; }
+  .badge.cstr, .badge.pfr { background: #b45309; }
+  .badge.unknown { background: #64748b; }
+  .task-head .title { font-weight: 600; font-size: 15px; }
+  .adapter-tag { margin-left: auto; font-size: 12px; color: var(--sub2); }
+  .task-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .sec-title { font-size: 12.5px; font-weight: 700; color: var(--sub);
+               text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
+  .reason, .assumptions li, .clarify li, .messages li { font-size: 13px; line-height: 1.7; color: #374151; }
+  ul.assumptions, ul.clarify, ul.messages { padding-left: 18px; }
+  .clarify li { color: var(--warn); }
+  .messages li { color: var(--err); }
+  .eq { font-family: var(--mono); background: #f6f8fa; border: 1px solid var(--line);
+        border-radius: 6px; padding: 8px 12px; margin: 4px 0; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; }
+  th { background: #f0f4f8; font-weight: 600; color: #334155; white-space: nowrap; }
+  td.num { font-family: var(--mono); }
+  .bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .bar { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #0e6e5c, #22a08c); min-width: 2px; }
+  .conv-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .conv-tag { background: #eef6f5; border: 1px solid #cfe6e2; color: #0b3d33;
+              border-radius: 6px; padding: 4px 10px; font-size: 12.5px; font-family: var(--mono); }
+  details { font-size: 12.5px; }
+  details summary { cursor: pointer; color: var(--accent2); font-weight: 600; }
+  pre.json { margin-top: 8px; background: #0f172a; color: #d7e3ff; padding: 14px;
+             border-radius: 8px; overflow: auto; max-height: 360px; font-size: 12px;
+             line-height: 1.55; font-family: var(--mono); }
+  .placeholder { color: var(--sub2); text-align: center; padding: 60px 20px; font-size: 13.5px; }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid #cbe7e1;
+          border-top-color: var(--accent); border-radius: 50%; animation: r 0.8s linear infinite;
+          vertical-align: -2px; margin-right: 6px; }
+  @keyframes r { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>AI 化工反应器智能建模</h1>
+  <p>自然语言描述 → 反应器类型判断 → Aspen HYSYS 建模与求解 → 产物分布结果</p>
+  <div class="status-chips" id="chips">加载中…</div>
+</header>
+<main>
+  <section class="card">
+    <h2>反应过程描述</h2>
+    <textarea id="input" placeholder="例：我需要模拟甲烷蒸汽重整，进料是甲烷和水蒸气（摩尔比 1:2.7）……"></textarea>
+    <div class="presets">
+      <button class="preset" data-p="p1">场景 1 · 甲烷蒸汽重整（710°C / 600°C 两工况对比）</button>
+      <button class="preset" data-p="p2">场景 2 · 甲苯歧化（转化率反应器，50%）</button>
+      <button class="preset" data-p="p3">通用验证 · 甲烷完全燃烧（Gibbs 反应器）</button>
+      <button class="preset" data-p="p4">通用验证 · 液相反应 + 动力学（CSTR）</button>
+      <button class="preset" data-p="p5">特殊符号 · 下标/⇌/(液)/全角写法（CSTR）</button>
+    </div>
+    <div class="btns">
+      <button class="primary" id="btn-run" onclick="simulate()">解析并模拟</button>
+      <button class="ghost" id="btn-parse" onclick="parseOnly()">仅解析</button>
+    </div>
+    <label class="save-opt" title="勾选后，本次求解完成的 HYSYS 案例将另存为 .hsc 文件，可用 HYSYS 打开核对建模。默认值由服务端 HYSYS_SAVE_CASE 环境变量决定。">
+      <input type="checkbox" id="save-case"> 求解后保存 HYSYS 案例（.hsc）
+    </label>
+    <div class="env-note">
+      支持常见特殊写法并自动规范化：化学式下标（CH₄、C₇H₈）、可逆箭头（⇌ →）、相态标注（(g)(l)(气)(液)）、
+      全角字符（２５MPa、k＝0.01）；单位支持 MPa/bar/kPa/atm/kgf/cm²、°C/℃/K、kgmole/h、kg/h、Nm³/h、t/h（吨/时）。<br>
+      Mock 模式返回联调估算数据；连接真实 HYSYS 需在安装 HYSYS 的机器上以
+      <code>HYSYS_MODE=com</code> 运行本服务（详见 README）。
+    </div>
+  </section>
+  <section id="results">
+    <div class="card placeholder" id="placeholder">输入反应描述后点击「解析并模拟」<br>结果将在此展示：反应器类型、选择理由、假设与澄清、HYSYS 计算结果</div>
+  </section>
+</main>
+
+<script>
+const PRESETS = {
+  p1: `我需要模拟甲烷蒸汽重整。进料是甲烷和水蒸气（摩尔比 1:2.7），有两个反应，主反应甲烷和水反应生成一氧化碳和氢气；副反应一氧化碳和水蒸汽反应生成二氧化碳和氢气。请分析以下两种情况下反应炉的组分分布：
+1、重整炉出口气温度为 710°C，压力 13.5 bar，进料温度 520°C；
+2、重整炉出口气温度为 600°C，压力 13.5 bar，进料温度 520°C。
+进料流量可以自定，要求符合一个工厂一年正常的处理量。`,
+  p2: `请帮我完成甲苯歧化反应的模拟。甲苯原料进入转化率反应器，发生歧化反应：2C7H8 = C6H6 + C8H10。甲苯进料流量 10000 kg/h，进料温度 380°C，操作压力 2.5MPa，甲苯转化率为 50%，反应产物为苯和二甲苯（邻、间、对三种异构体）。请配置反应并模拟产物分布和流股组成。不需要探讨动力学，只关心该转化率下的出口浓度分布，不考虑其他副反应。`,
+  p3: `请模拟甲烷在过量空气中的完全燃烧：甲烷和氧气反应生成二氧化碳和水，体系温度很高，产物分布未知。进料甲烷 100 kgmole/h，氧气 300 kgmole/h，温度 25°C，压力 1 bar。`,
+  p4: `模拟一个液相酯化反应体系：乙酸和乙醇反应生成乙酸乙酯和水。我提供动力学参数：速率常数 k=0.01 1/s，活化能 50 kJ/mol。液相进料乙酸 50 kgmole/h、乙醇 50 kgmole/h，温度 70°C，压力 1 bar，釜式反应器。`,
+  p5: `液相反应：CH₃COOH(液) ＋ C₂H₅OH(液) ⇌ CH₃COOC₂H₅(液) ＋ H₂O(液)。动力学参数：速率常数 k＝0.01，活化能 50 kJ/mol。进料乙酸 50 kgmole/h、乙醇 50 kgmole/h，温度 70°C，压力 1 bar，釜式反应器。`,
+};
+
+const REACTOR_CN = {conversion: "转化率反应器", equilibrium: "平衡反应器", gibbs: "Gibbs 反应器", cstr: "CSTR 全混流", pfr: "PFR 平推流", unknown: "待确认"};
+
+let $ = (id) => document.getElementById(id);
+
+async function post(url, body) {
+  const resp = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (!resp.ok) { const t = await resp.text(); throw new Error(`HTTP ${resp.status}: ${t.slice(0, 300)}`); }
+  return resp.json();
+}
+
+document.querySelectorAll(".preset").forEach(b => b.onclick = () => { $("input").value = PRESETS[b.dataset.p]; });
+
+async function loadStatus() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    $("save-case").checked = !!s.save_case_default;
+    $("chips").innerHTML = `
+      <span class="chip">适配器 <b>${s.adapter_label}</b></span>
+      <span class="chip">HYSYS COM <b>${s.hysys_com_available ? "可用" : "不可用"}</b></span>
+      <span class="chip">LLM <b>${s.llm_configured ? esc(s.llm_model || "已配置") : "未配置（使用规则解析）"}</b></span>
+      <span class="chip">HYSYS_MODE <b>${s.hysys_mode_env}</b></span>
+      <span class="chip">案例保存默认 <b>${s.save_case_default ? "开" : "关"}</b></span>`;
+  } catch (e) { $("chips").textContent = "后端状态获取失败"; }
+}
+
+function busy(on) {
+  $("btn-run").disabled = on;
+  $("btn-parse").disabled = on;
+  if (on) $("btn-run").innerHTML = '<span class="spin"></span>计算中…';
+  else $("btn-run").textContent = "解析并模拟";
+}
+
+function esc(s) { const d = document.createElement("div"); d.textContent = s ?? ""; return d.innerHTML; }
+
+async function simulate() {
+  const text = $("input").value.trim();
+  if (!text) { alert("请输入反应过程描述"); return; }
+  busy(true);
+  try {
+    const data = await post("/api/simulate", {text, save_case: $("save-case").checked});
+    render(data, true);
+  } catch (e) { renderError(e); } finally { busy(false); }
+}
+
+async function parseOnly() {
+  const text = $("input").value.trim();
+  if (!text) { alert("请输入反应过程描述"); return; }
+  busy(true);
+  try {
+    const data = await post("/api/parse", {text});
+    render({tasks: data.tasks, results: null, used_llm: data.used_llm, adapter_label: ""}, false);
+  } catch (e) { renderError(e); } finally { busy(false); }
+}
+
+function renderError(e) {
+  $("results").innerHTML = `<div class="card"><div class="sec-title">请求失败</div>
+    <ul class="messages"><li>${esc(String(e))}</li></ul></div>`;
+}
+
+function pct(v) { return (v * 100).toFixed(2) + "%"; }
+
+function render(data, withResults) {
+  const root = $("results");
+  root.innerHTML = "";
+  const headTag = data.adapter_label ? `<div class="adapter-tag">${esc(data.adapter_label)} · ${data.used_llm ? "LLM 解析" : "规则解析"}</div>` : "";
+  data.tasks.forEach((task, i) => {
+    const res = withResults && data.results ? data.results[i] : null;
+    const card = document.createElement("div");
+    card.className = "task-card";
+    card.innerHTML = `
+      <div class="task-head">
+        <span class="badge ${task.reactor_type}">${REACTOR_CN[task.reactor_type] || task.reactor_type}</span>
+        <span class="title">${esc(task.title)}</span>
+        ${headTag}
+      </div>
+      <div class="task-body">
+        ${task.selection_reason ? `<div><div class="sec-title">选择理由</div><div class="reason">${esc(task.selection_reason)}</div></div>` : ""}
+        ${task.reactions.length ? `<div><div class="sec-title">反应配置</div>
+          ${task.reactions.map(r => `<div class="eq">${esc(r.equation || r.name)}
+            ${r.kind === "conversion" && r.conversion != null ? `　<b>转化率</b>=${pct(r.conversion)}（基准 ${esc(r.basis_component || "-")}）` : ""}
+            ${r.kind === "equilibrium" ? "　<span style='color:#0a5a8a'>平衡反应</span>" : ""}</div>`).join("")}
+        </div>` : ""}
+        ${res && res.conversions && Object.keys(res.conversions).length ? `<div><div class="sec-title">转化率</div>
+          <div class="conv-tags">${Object.entries(res.conversions).map(([k, v]) => `<span class="conv-tag">${esc(k)}：${pct(v)}</span>`).join("")}</div></div>` : ""}
+        ${task.assumptions.length ? `<div><div class="sec-title">建模假设</div><ul class="assumptions">${task.assumptions.map(a => `<li>${esc(a)}</li>`).join("")}</ul></div>` : ""}
+        ${task.clarifications.length ? `<div><div class="sec-title">需要澄清</div><ul class="clarify">${task.clarifications.map(a => `<li>${esc(a)}</li>`).join("")}</ul></div>` : ""}
+        ${res ? renderStreams(res) : ""}
+        ${res && res.case_file ? `<div class="case-file">HYSYS 案例已保存（可用 HYSYS 打开核对）：<code>${esc(res.case_file)}</code></div>` : ""}
+        ${res && res.messages.length ? `<ul class="messages">${res.messages.map(m => `<li>${esc(m)}</li>`).join("")}</ul>` : ""}
+        <details><summary>查看建模任务 JSON</summary><pre class="json">${esc(JSON.stringify(task, null, 2))}</pre></details>
+      </div>`;
+    root.appendChild(card);
+  });
+}
+
+function renderStreams(res) {
+  const rows = res.streams.map(s => {
+    const comps = Object.entries(s.composition || {});
+    const compHtml = comps.length
+      ? comps.map(([k, v]) => `<div class="bar-wrap"><span style="min-width:86px;display:inline-block">${esc(k)}</span>
+          <span class="bar" style="width:${Math.max(2, v * 130)}px"></span>
+          <span class="num">${pct(v)}</span></div>`).join("")
+      : "-";
+    return `<tr>
+      <td>${esc(s.name)}</td>
+      <td class="num">${s.temperature_C != null ? s.temperature_C.toFixed(1) : "-"}</td>
+      <td class="num">${s.pressure_bar != null ? s.pressure_bar.toFixed(2) : "-"}</td>
+      <td class="num">${s.molar_flow_kgmole_h != null ? s.molar_flow_kgmole_h.toFixed(1) : (s.mass_flow_kg_h != null ? s.mass_flow_kg_h.toFixed(0) + " kg/h" : "-")}</td>
+      <td>${compHtml}</td></tr>`;
+  }).join("");
+  return `<div><div class="sec-title">模拟结果 ${res.converged ? '<span style="color:var(--ok)">（已收敛）</span>' : '<span style="color:var(--err)">（未收敛）</span>'}</div>
+    <table><thead><tr><th>流股</th><th>温度 °C</th><th>压力 bar</th><th>流量</th><th>摩尔组成</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    ${res.duty_kw != null ? `<p style="margin-top:8px;font-size:13px">反应器热负荷：<b class="num">${res.duty_kw.toFixed(1)} kW</b></p>` : ""}
+  </div>`;
+}
+
+loadStatus();
+</script>
+</body>
+</html>
